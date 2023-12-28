@@ -22,12 +22,16 @@ sudo tee /etc/systemd/system/connectcam.service > /dev/null << EOF
 [Unit]
 Description=Minimalistic webcam manager for Prusa Connect
 After=network-online.target
+StartLimitInterval=200
+StartLimitBurst=5
 
 [Service]
 User=$(id -u)
 Group=$(id -g)
 WorkingDirectory=$dir
 ExecStart=/usr/bin/python3 $dir/connectcam.py $config
+Restart=always
+RestartSec=30
 
 [Install]
 WantedBy=multi-user.target
