@@ -1,0 +1,25 @@
+refresh_rate = 10 # Seconds between each snapshot
+
+# Example:
+[[cameras]]
+name = "UVC Camera (046d:0825)"
+# ^ Required, find with `v4l2-ctl --list-devices`.
+#   If specifying "dev" below, this can be whatever you want.
+token = "ToK3NFR0MPrUS4C0Nn3C7"
+# ^ Required, get from Prusa Connect camera page (Add new other camera)
+#fingerprint = "FinG3RPrIn7"
+# ^ Optional, will be generated automatically if not specified.
+#   After first upload to a new camera, the fingerprint must stay the same.
+#dev = "/dev/video0"
+# ^ Optional, will be autodetected from name if not specified.
+#   Recommended to not specify unless you have multiple identical cameras.
+#resolution = "1280x720"
+# ^ Optional, best resolution is used if not specified
+
+# [[cameras]]
+# name = "camera2"
+# token = "token2"
+
+# [[cameras]]
+# name = "camera3"
+# token = "token3"

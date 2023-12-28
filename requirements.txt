@@ -1,0 +1,3 @@
+requests==2.25.1
+toml==0.10.1
+v4l2-python3==0.3.2
