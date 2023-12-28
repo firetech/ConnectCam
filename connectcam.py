@@ -82,7 +82,7 @@ def init(vd, config = {}):
     fmt = v4l2.v4l2_format()
     fmt.type = v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE
     fmt.fmt.pix.pixelformat = v4l2.V4L2_PIX_FMT_MJPEG
-    curr_pixels = 0
+    max_pixels = 0
     size = v4l2.v4l2_frmsizeenum()
     size.pixel_format = fmt.fmt.pix.pixelformat
     size.index = 0
@@ -94,12 +94,14 @@ def init(vd, config = {}):
         if size.type == v4l2.V4L2_FRMSIZE_TYPE_DISCRETE:
             width = size.discrete.width
             height = size.discrete.height
+            curr_pixels = width * height
             match = (config_res is not None and
                     c_width == width and
                     c_height == height)
-            if match or width * height > curr_pixels:
+            if match or curr_pixels >= max_pixels:
                 fmt.fmt.pix.width = width
                 fmt.fmt.pix.height = height
+                max_pixels = curr_pixels
                 if match:
                     config_res_found = True
                     break
