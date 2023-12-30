@@ -1,7 +1,7 @@
 refresh_rate = 10 # Seconds between each snapshot
 
 # Example:
-[[cameras]]
+[[camera]]
 name = "UVC Camera (046d:0825)"
 # ^ Required, find with `v4l2-ctl --list-devices`.
 #   If specifying "dev" below, this can be whatever you want.
@@ -16,10 +16,10 @@ token = "ToK3NFR0MPrUS4C0Nn3C7"
 #resolution = "1280x720"
 # ^ Optional, best resolution is used if not specified
 
-# [[cameras]]
+# [[camera]]
 # name = "camera2"
 # token = "token2"
 
-# [[cameras]]
+# [[camera]]
 # name = "camera3"
 # token = "token3"

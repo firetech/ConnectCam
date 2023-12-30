@@ -48,8 +48,11 @@ def load_config(config_file = None):
         config_file = os.path.join(path, 'config.toml')
     verbose_print("Loading '{}'...".format(config_file))
     config = toml.load(config_file)
-    if not 'cameras' in config or len(config['cameras']) < 1:
-        raise ValueError("No cameras in config!")
+    if not 'camera' in config or len(config['camera']) < 1:
+        if 'cameras' in config and len(config['cameras']) >= 1:
+            config['camera'] = config['cameras']
+        else:
+            raise ValueError("No cameras in config!")
     if not 'refresh_rate' in config:
         config['refresh_rate'] = 30
     return config
@@ -208,7 +211,7 @@ if __name__ == '__main__':
     config = load_config(args.config)
     rate = config['refresh_rate']
     threads = []
-    for cam_config in config['cameras']:
+    for cam_config in config['camera']:
         if not 'name' in cam_config:
             raise ValueError("Camera config missing name!")
         if not 'token' in cam_config:
