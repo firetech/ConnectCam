@@ -215,7 +215,8 @@ if __name__ == '__main__':
         if not 'name' in cam_config:
             raise ValueError("Camera config missing name!")
         if not 'token' in cam_config:
-            raise ValueError("Camera '{}' missing token!")
+            raise ValueError("Camera '{}' missing token!".format(
+                    cam_config['name']))
         if not 'fingerprint' in cam_config:
             cam_config['fingerprint'] = base64.b64encode(
                     bytes(cam_config['name'], 'utf8'))
