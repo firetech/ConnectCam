@@ -181,7 +181,14 @@ stop = threading.Event()
 def capture_thread(vd, buf, mm, config, rate = 30):
     try:
         while not stop.wait(timeout=rate):
+            try:
                 capture(vd, buf, mm, config)
+            except Exception as err:
+                print("Error updating frame for '{}': {}".format(
+                            config['name'],
+                            err
+                        ),
+                        file=sys.stderr)
     finally:
         vd.close()
 
