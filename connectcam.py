@@ -165,10 +165,10 @@ def capture(vd, buf, mm, config):
     response = requests.put(
         PUT_URL,
         headers={
-            "accept": "*/*",
-            "content-type": "image/jpg",
-            "fingerprint": config['fingerprint'],
-            "token": config['token'],
+            'Content-Type': 'image/jpg',
+            'Content-Length': str(buf.bytesused),
+            'Fingerprint': config['fingerprint'],
+            'Token': config['token'],
         },
         data=_stream_mmap(mm, buf.bytesused),
         stream=True,
