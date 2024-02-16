@@ -33,7 +33,7 @@ import requests
 import threading
 
 CAMERA_WAIT_TIMEOUT = 10
-PUT_URL = 'https://connect.prusa3d.com/c/snapshot'
+DEFAULT_URL = 'https://connect.prusa3d.com/c/snapshot'
 MAX_UPLOAD_CHUNK = 65535
 
 verbose = False
@@ -143,14 +143,6 @@ def init(vd, config = {}):
 
     return buf, mm
 
-def _stream_mmap(mm, length):
-    to_send = length
-    while to_send > 0:
-        chunk = max(to_send, MAX_UPLOAD_CHUNK)
-        data = mm.read(chunk)
-        yield data
-        to_send -= len(data)
-
 def capture(vd, buf, mm, config):
     # Grab a frame
     fcntl.ioctl(vd, v4l2.VIDIOC_QBUF, buf)
@@ -159,19 +151,18 @@ def capture(vd, buf, mm, config):
         raise TimeoutError("Timeout getting frame for '{}'".format(
                     config['name']))
     fcntl.ioctl(vd, v4l2.VIDIOC_DQBUF, buf)
+    verbose_print("Captured frame for '{}'".format(config['name']))
     # At this point, the `mm` mmap contains the frame data
 
     # And send it to Prusa Connect
     response = requests.put(
-        PUT_URL,
+        config['url'],
         headers={
             'Content-Type': 'image/jpg',
-            'Content-Length': str(buf.bytesused),
             'Fingerprint': config['fingerprint'],
             'Token': config['token'],
         },
-        data=_stream_mmap(mm, buf.bytesused),
-        stream=True,
+        data=mm.read(buf.bytesused)
     )
     mm.seek(0)
     response.raise_for_status()
@@ -225,8 +216,11 @@ if __name__ == '__main__':
             raise ValueError("Camera '{}' missing token!".format(
                     cam_config['name']))
         if not 'fingerprint' in cam_config:
-            cam_config['fingerprint'] = base64.b64encode(
-                    bytes(cam_config['name'], 'utf8'))
+            b64 = base64.b64encode(bytes(cam_config['name'], 'utf8'))
+            fprint = b64.decode('ascii').ljust(16, '.')
+            cam_config['fingerprint'] = fprint[0:64]
+        if not 'url' in cam_config:
+            cam_config['url'] = DEFAULT_URL
         try:
             vd = None
             if 'dev' in cam_config:
