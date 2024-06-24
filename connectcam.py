@@ -34,13 +34,14 @@ import threading
 
 CAMERA_WAIT_TIMEOUT = 10
 DEFAULT_URL = 'https://connect.prusa3d.com/c/snapshot'
-MAX_UPLOAD_CHUNK = 65535
 
 verbose = False
+
 
 def verbose_print(*args, **kwargs):
     if verbose:
         print(*args, **kwargs)
+
 
 def load_config(config_file = None):
     if config_file is None:
@@ -57,6 +58,7 @@ def load_config(config_file = None):
         config['refresh_rate'] = 30
     return config
 
+
 def get_device(camera_name):
     dev = None
     for f in os.listdir("/sys/class/video4linux"):
@@ -68,6 +70,7 @@ def get_device(camera_name):
             if dev is None or f < dev:
                 dev = f
     return '/dev/{}'.format(dev)
+
 
 def init(vd, config = {}):
     verbose_print("Initializing '{}' ({})".format(config['name'], vd.name))
@@ -143,6 +146,28 @@ def init(vd, config = {}):
 
     return buf, mm
 
+
+# Adapted from https://stackoverflow.com/a/29838711
+class MMapStreamer(object):
+    def __init__(self, mmap, total, block=65535):
+        self.mmap = mmap
+        self.remaining = total
+        self.block = block
+
+        # So that requests doesn't try to chunk the upload but will instead
+        # stream it:
+        self.len = total
+
+    def read(self, amount=-1):
+        if self.remaining <= 0:
+            return b''
+        if amount < 0:
+            amount = self.total
+        data = self.mmap.read(min(self.block, self.remaining, amount))
+        self.remaining -= len(data)
+        return data
+
+
 def capture(vd, buf, mm, config):
     # Grab a frame
     fcntl.ioctl(vd, v4l2.VIDIOC_QBUF, buf)
@@ -162,11 +187,12 @@ def capture(vd, buf, mm, config):
             'Fingerprint': config['fingerprint'],
             'Token': config['token'],
         },
-        data=mm.read(buf.bytesused)
+        data=MMapStreamer(mm, buf.bytesused)
     )
     mm.seek(0)
     response.raise_for_status()
     verbose_print("Updated frame for '{}'".format(config['name']))
+
 
 stop = threading.Event()
 def capture_thread(vd, buf, mm, config, rate = 30):
@@ -183,9 +209,11 @@ def capture_thread(vd, buf, mm, config, rate = 30):
     finally:
         vd.close()
 
+
 def _signal_handler(sig, frame):
     verbose_print('Exiting...')
     stop.set()
+
 
 if __name__ == '__main__':
     import argparse
