@@ -69,10 +69,22 @@ def get_device(camera_name):
         if camera_name in name:
             if dev is None or f < dev:
                 dev = f
-    return '/dev/{}'.format(dev)
+    if dev is not None:
+        dev = '/dev/{}'.format(dev)
+    return dev
 
 
-def init(vd, config = {}):
+def init(config = {}, vd = None):
+    if vd is None:
+        if 'dev' in config:
+            dev = config['dev']
+        else:
+            dev = get_device(config['name'])
+            if dev is None:
+                raise Exception("Cannot find device for '{}'".format(
+                        config['name']))
+        vd = open(dev, 'rb+', buffering=0)
+
     verbose_print("Initializing '{}' ({})".format(config['name'], vd.name))
     # Check video capture capability
     cp = v4l2.v4l2_capability()
@@ -119,8 +131,8 @@ def init(vd, config = {}):
                     config['name']),
                 file=sys.stderr)
     verbose_print("Setting resolution {}x{}".format(
-                fmt.fmt.pix.width,
-                fmt.fmt.pix.height))
+            fmt.fmt.pix.width,
+            fmt.fmt.pix.height))
     fcntl.ioctl(vd, v4l2.VIDIOC_S_FMT, fmt)
 
     # Request and set up capture buffer
@@ -140,11 +152,29 @@ def init(vd, config = {}):
         mmap.PROT_READ | mmap.PROT_WRITE,
         offset=buf.m.offset)
 
+    # Toggle streaming to work around some intermittent initialization issues
+    fcntl.ioctl(vd, v4l2.VIDIOC_STREAMON,
+            v4l2.v4l2_buf_type(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
+    fcntl.ioctl(vd, v4l2.VIDIOC_STREAMOFF,
+            v4l2.v4l2_buf_type(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
+
     # Start streaming
     fcntl.ioctl(vd, v4l2.VIDIOC_STREAMON,
             v4l2.v4l2_buf_type(v4l2.V4L2_BUF_TYPE_VIDEO_CAPTURE))
 
-    return buf, mm
+    return vd, buf, mm
+
+
+def capture(vd, buf, mm, config):
+    # Grab a frame
+    fcntl.ioctl(vd, v4l2.VIDIOC_QBUF, buf)
+    events, *_ = select.select((vd,), (), (), CAMERA_WAIT_TIMEOUT)
+    if not events:
+        raise TimeoutError("Timeout getting frame for '{}'".format(
+                    config['name']))
+    fcntl.ioctl(vd, v4l2.VIDIOC_DQBUF, buf)
+    verbose_print("Captured frame for '{}'".format(config['name']))
+    # At this point, the `mm` mmap contains the frame data
 
 
 # Adapted from https://stackoverflow.com/a/29838711
@@ -168,18 +198,8 @@ class MMapStreamer(object):
         return data
 
 
-def capture(vd, buf, mm, config):
-    # Grab a frame
-    fcntl.ioctl(vd, v4l2.VIDIOC_QBUF, buf)
-    events, *_ = select.select((vd,), (), (), CAMERA_WAIT_TIMEOUT)
-    if not events:
-        raise TimeoutError("Timeout getting frame for '{}'".format(
-                    config['name']))
-    fcntl.ioctl(vd, v4l2.VIDIOC_DQBUF, buf)
-    verbose_print("Captured frame for '{}'".format(config['name']))
-    # At this point, the `mm` mmap contains the frame data
-
-    # And send it to Prusa Connect
+def upload(buf, mm, config):
+    # Send frame to Prusa Connect
     response = requests.put(
         config['url'],
         headers={
@@ -199,13 +219,32 @@ def capture_thread(vd, buf, mm, config, rate = 30):
     try:
         while not stop.wait(timeout=rate):
             try:
+                if vd is None:
+                    vd, buf, mm = init(config)
                 capture(vd, buf, mm, config)
             except Exception as err:
-                print("Error updating frame for '{}': {}".format(
+                print("Error capturing frame for '{}': {}".format(
                             config['name'],
                             err
                         ),
                         file=sys.stderr)
+                if vd is not None:
+                    vd.close()
+                    vd = None
+                if mm is not None:
+                    mm.close()
+                    mm = None
+                buf = None
+
+            if vd is not None:
+                try:
+                    upload(buf, mm, config)
+                except Exception as err:
+                    print("Error updating frame for '{}': {}".format(
+                                config['name'],
+                                err
+                            ),
+                            file=sys.stderr)
     finally:
         vd.close()
 
@@ -213,6 +252,13 @@ def capture_thread(vd, buf, mm, config, rate = 30):
 def _signal_handler(sig, frame):
     verbose_print('Exiting...')
     stop.set()
+
+
+def _init_error(fatal, msg):
+    if fatal:
+        raise RuntimeError(msg)
+    else:
+        print("Warning: {}".format(msg), file=sys.stderr)
 
 
 if __name__ == '__main__':
@@ -249,26 +295,41 @@ if __name__ == '__main__':
             cam_config['fingerprint'] = fprint[0:64]
         if not 'url' in cam_config:
             cam_config['url'] = DEFAULT_URL
+        vd = None
+        buf = None
+        mm = None
         try:
-            vd = None
-            if 'dev' in cam_config:
-                dev = cam_config['dev']
-            else:
-                dev = get_device(cam_config['name'])
-                if dev is None:
-                    raise
-            vd = open(dev, 'rb+', buffering=0)
-            buf, mm = init(vd, cam_config)
-            capture(vd, buf, mm, cam_config)
-            if args.oneshot:
-                vd.close()
-            else:
-                threads.append(threading.Thread(
-                            target=capture_thread,
-                            args=(vd, buf, mm, cam_config, rate)))
+            vd, buf, mm = init(cam_config)
         except Exception as e:
-            raise RuntimeError("Failed to initialize '{}'".format(
+            _init_error(args.oneshot, "Failed to initialize '{}'".format(
                     cam_config['name']))
+
+        if vd is not None:
+            try:
+                capture(vd, buf, mm, cam_config)
+                if args.oneshot:
+                    vd.close()
+            except Exception as e:
+                _init_error(args.oneshot, "Error capturing frame for '{}': " \
+                        "{}".format(
+                            config['name'],
+                            err
+                        ))
+            try:
+                upload(buf, mm, cam_config)
+                if args.oneshot:
+                    mm.close()
+            except Exception as e:
+                _init_error(args.oneshot, "Error updating frame for '{}': " \
+                        "{}".format(
+                            config['name'],
+                            err
+                        ))
+
+        if not args.oneshot:
+            threads.append(threading.Thread(
+                        target=capture_thread,
+                        args=(vd, buf, mm, cam_config, rate)))
 
     if not args.oneshot:
         signal.signal(signal.SIGINT, _signal_handler)
