@@ -41,11 +41,11 @@ Installation
    ```
    refresh_rate = 10 # Seconds between each snapshot
 
-   [[cameras]]
+   [[camera]]
    name = "Full HD webcam: Full HD webcam"
    token = "T0k3n0N3"
 
-   [[cameras]]
+   [[camera]]
    name = "UVC Camera (046d:0825)"
    token = "T0k3n7W0"
    ```
