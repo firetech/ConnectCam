@@ -246,7 +246,10 @@ def capture_thread(vd, buf, mm, config, rate = 30):
                             ),
                             file=sys.stderr)
     finally:
-        vd.close()
+        if vd is not None:
+            vd.close()
+        if mm is not None:
+            mm.close()
 
 
 def _signal_handler(sig, frame):
